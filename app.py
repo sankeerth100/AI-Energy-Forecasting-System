@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import joblib
 import os
+from sklearn.ensemble import RandomForestRegressor
 
 # -------------------------
 # PAGE CONFIG
@@ -10,7 +11,7 @@ import os
 st.set_page_config(page_title="Energy AI Dashboard", layout="wide")
 
 # -------------------------
-# DARK THEME (UI STYLE)
+# DARK THEME
 # -------------------------
 st.markdown("""
 <style>
@@ -42,15 +43,6 @@ Real-time energy consumption insights & forecasting
 """, unsafe_allow_html=True)
 
 # -------------------------
-# LOAD MODEL
-# -------------------------
-if not os.path.exists("models/energy_model.pkl"):
-    st.error("❌ Model not found. Run main.py first.")
-    st.stop()
-
-model = joblib.load("models/energy_model.pkl")
-
-# -------------------------
 # FILE UPLOAD
 # -------------------------
 st.sidebar.header("📂 Data Input")
@@ -71,6 +63,42 @@ if "datetime" not in df.columns or "energy" not in df.columns:
     st.stop()
 
 df["datetime"] = pd.to_datetime(df["datetime"])
+
+# -------------------------
+# FEATURE ENGINEERING
+# -------------------------
+df["hour"] = df["datetime"].dt.hour
+df["day"] = df["datetime"].dt.day
+df["month"] = df["datetime"].dt.month
+df["dayofweek"] = df["datetime"].dt.dayofweek
+
+df["lag_1"] = df["energy"].shift(1)
+df["lag_2"] = df["energy"].shift(2)
+df["lag_24"] = df["energy"].shift(24)
+df["rolling_mean_3"] = df["energy"].rolling(3).mean()
+
+df.dropna(inplace=True)
+
+# -------------------------
+# LOAD OR TRAIN MODEL (FIXED)
+# -------------------------
+model_path = "models/energy_model.pkl"
+
+if os.path.exists(model_path):
+    model = joblib.load(model_path)
+else:
+    st.warning("⚙️ Model not found. Training model...")
+
+    X = df[["hour","day","month","dayofweek","lag_1","lag_2","lag_24","rolling_mean_3"]]
+    y = df["energy"]
+
+    model = RandomForestRegressor()
+    model.fit(X, y)
+
+    os.makedirs("models", exist_ok=True)
+    joblib.dump(model, model_path)
+
+    st.success("✅ Model trained successfully!")
 
 # -------------------------
 # FILTERS
@@ -117,30 +145,14 @@ with col3:
     """, unsafe_allow_html=True)
 
 # -------------------------
-# FEATURE ENGINEERING
-# -------------------------
-df["hour"] = df["datetime"].dt.hour
-df["day"] = df["datetime"].dt.day
-df["month"] = df["datetime"].dt.month
-df["dayofweek"] = df["datetime"].dt.dayofweek
-
-df["lag_1"] = df["energy"].shift(1)
-df["lag_2"] = df["energy"].shift(2)
-df["lag_24"] = df["energy"].shift(24)
-df["rolling_mean_3"] = df["energy"].rolling(3).mean()
-
-df.dropna(inplace=True)
-
-# -------------------------
-# TABS (PRO UI)
+# TABS
 # -------------------------
 tab1, tab2, tab3 = st.tabs(["📈 Dashboard", "🤖 Predictions", "🔮 Forecast"])
 
 # =========================
-# 📈 TAB 1 — DASHBOARD
+# DASHBOARD
 # =========================
 with tab1:
-
     st.markdown("### 📈 Energy Trends")
 
     fig1 = px.line(df, x="datetime", y="energy")
@@ -150,37 +162,20 @@ with tab1:
 
     with colA:
         hourly = df.groupby("hour")["energy"].mean().reset_index()
-        fig2 = px.bar(hourly, x="hour", y="energy", title="Hourly Pattern")
+        fig2 = px.bar(hourly, x="hour", y="energy")
         st.plotly_chart(fig2, use_container_width=True)
 
     with colB:
         df["date"] = df["datetime"].dt.date
         daily = df.groupby("date")["energy"].mean().reset_index()
-        fig3 = px.line(daily, x="date", y="energy", title="Daily Pattern")
+        fig3 = px.line(daily, x="date", y="energy")
         st.plotly_chart(fig3, use_container_width=True)
 
 # =========================
-# 🤖 TAB 2 — PREDICTIONS
+# PREDICTIONS
 # =========================
 with tab2:
-
-    st.markdown("### 🤖 Model Predictions")
-
-    if os.path.exists("outputs/predictions.csv"):
-        pred_df = pd.read_csv("outputs/predictions.csv")
-
-        fig4 = px.line(pred_df, y=["Actual", "Predicted"])
-        st.plotly_chart(fig4, use_container_width=True)
-
-        st.download_button(
-            "📥 Download Predictions",
-            pred_df.to_csv(index=False),
-            "predictions.csv"
-        )
-    else:
-        st.warning("Run main.py first to generate predictions")
-
-    st.markdown("### 🔥 Feature Importance")
+    st.markdown("### 🤖 Model Insights")
 
     features = ["hour","day","month","dayofweek","lag_1","lag_2","lag_24","rolling_mean_3"]
     importances = model.feature_importances_
@@ -191,28 +186,26 @@ with tab2:
     st.plotly_chart(fig5, use_container_width=True)
 
 # =========================
-# 🔮 TAB 3 — FORECAST
+# FORECAST
 # =========================
 with tab3:
-
     st.markdown("### 🔮 Future Forecast")
 
     if st.button("Generate 24-Hour Forecast"):
 
         last = df.iloc[-1]
         preds = []
-        temp = last.copy()
 
         for i in range(24):
             input_data = [[
-                temp["hour"],
-                temp["day"],
-                temp["month"],
-                temp["dayofweek"],
-                temp["energy"],
-                temp["energy"],
-                temp["energy"],
-                temp["energy"]
+                last["hour"],
+                last["day"],
+                last["month"],
+                last["dayofweek"],
+                last["energy"],
+                last["energy"],
+                last["energy"],
+                last["energy"]
             ]]
             pred = model.predict(input_data)[0]
             preds.append(pred)
