@@ -1,8 +1,8 @@
 # ⚡ AI-Powered Energy Consumption Forecasting System
 
 ## 🚀 Live Demo
-🔗 Streamlit App: https://your-app-link.streamlit.app  
-*(Add your link after deployment)*
+🔗 Streamlit App: https://ai-energy-forecasting-system-8v45vdqxh5gppui8mxrappq.streamlit.app/
+
 
 ---
 
